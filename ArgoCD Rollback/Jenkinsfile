@@ -1,0 +1,43 @@
+pipeline {
+    agent any
+
+    environment {
+        ARGOCD_APP_NAME = 'your-argocd-app-name'
+        ROLLBACK_VERSION = 'user-provided-version'
+    }
+
+    stages {
+        stage('Check Current Package Version') {
+            steps {
+                script {
+                    // Check the current package version deployed by Argo CD
+                    def currentVersion = sh(script: "argocd app get ${env.ARGOCD_APP_NAME} -o json | jq -r '.status.sync.revision'", returnStdout: true).trim()
+                    echo "Current version of ${env.ARGOCD_APP_NAME}: ${currentVersion}"
+                    
+                    // Save the current version to an environment variable
+                    env.CURRENT_VERSION = currentVersion
+                }
+            }
+        }
+
+        stage('Rollback Package Version') {
+            steps {
+                script {
+                    // Rollback to the user-provided version
+                    if (env.CURRENT_VERSION != env.ROLLBACK_VERSION) {
+                        echo "Rolling back ${env.ARGOCD_APP_NAME} to version ${env.ROLLBACK_VERSION}"
+                        sh "argocd app rollback ${env.ARGOCD_APP_NAME} ${env.ROLLBACK_VERSION}"
+                    } else {
+                        echo "${env.ARGOCD_APP_NAME} is already at version ${env.ROLLBACK_VERSION}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline execution completed."
+        }
+    }
+}
