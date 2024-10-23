@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        ARGOCD_APP_NAME = 'your-argocd-app-name'
-        ROLLBACK_VERSION = 'user-provided-version'
+        ARGOCD_APP_NAME = 'app-name'
+        ROLLBACK_VERSION = 'version'
     }
 
     stages {
