@@ -1,0 +1,26 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Fetch Version') {
+            steps {
+                script {
+                    // Execute the shell script and capture the output
+                    def codeRevision = sh(script: './your_script.sh', returnStdout: true).trim()
+                    // Set it as an environment variable for future stages
+                    env.CODE_REVISION = codeRevision
+                    echo "Code Revision: ${env.CODE_REVISION}"
+                }
+            }
+        }
+
+        stage('Use Version in Next Stage') {
+            steps {
+                script {
+                    echo "Using Code Revision: ${env.CODE_REVISION}"
+                    // You can now use env.CODE_REVISION in your logic
+                }
+            }
+        }
+    }
+}
