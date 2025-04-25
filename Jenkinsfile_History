@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME = 'your-app-name'
+    }
+
+    stages {
+        stage('Check Argo CD App Health & Rollback if Needed') {
+            steps {
+                script {
+                    sh '''
+                        echo "Checking health of Argo CD app: $APP_NAME"
+                        HEALTH_STATUS=$(argocd app get "$APP_NAME" -o json | jq -r '.status.health.status')
+
+                        if [[ "$HEALTH_STATUS" == "Healthy" ]]; then
+                          echo "App is healthy. No rollback needed."
+                          exit 0
+                        fi
+
+                        echo "App is in '$HEALTH_STATUS' state. Attempting rollback to last healthy image..."
+
+                        HISTORY=$(argocd app history "$APP_NAME" -o json)
+                        LAST_GOOD_REVISION=""
+
+                        for ID in $(echo "$HISTORY" | jq -r 'sort_by(-.id) | .[].id'); do
+                          REV=$(echo "$HISTORY" | jq -r ".[] | select(.id==$ID) | .revision")
+                          echo "Checking revision $REV (ID $ID)..."
+                          REV_HEALTH=$(argocd app get "$APP_NAME" --revision "$REV" -o json | jq -r '.status.health.status')
+                          if [[ "$REV_HEALTH" == "Healthy" ]]; then
+                            LAST_GOOD_REVISION="$REV"
+                            echo "Found last healthy revision: $REV"
+                            break
+                          fi
+                        done
+
+                        if [[ -z "$LAST_GOOD_REVISION" ]]; then
+                          echo "No healthy revision found to roll back to. Manual intervention required."
+                          exit 1
+                        fi
+
+                        IMAGE=$(argocd app get "$APP_NAME" --revision "$LAST_GOOD_REVISION" -o json | jq -r '.status.summary.images[0]')
+                        IMAGE_TAG=$(echo "$IMAGE" | awk -F: '{print $2}')
+
+                        if [[ -z "$IMAGE_TAG" ]]; then
+                          echo "Could not determine image tag from healthy revision."
+                          exit 1
+                        fi
+
+                        echo "Rolling back to image tag: $IMAGE_TAG"
+                        argocd app set "$APP_NAME" --helm-set image.tag="$IMAGE_TAG"
+                        argocd app sync "$APP_NAME"
+
+                        echo "Rollback triggered successfully."
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            echo "Pipeline failed. Rollback may not have completed successfully."
+        }
+    }
+}
